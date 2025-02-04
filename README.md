@@ -34,7 +34,7 @@ Tech:
 
 
 
-FPGA - Xilinx PYNQ-Z2 (For ADC and DSP. Also has the capabilities for I2S communications)
+FPGA - Xilinx PYNQ-Z2 (For ADC and DSP. Also has the capabilities for I2S audio filtering)
 
 Microcontroller - STM32F407G-DISC1 (Hosting a server and handling communications between FPGA and MATLAB)
 
