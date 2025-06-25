@@ -33,11 +33,8 @@ The glasses reads the text file and uses text to speech to read the file outloud
 Tech:
 
 
+Microcontroller - STM32F446RE NUCLEO
 
-FPGA - Xilinx PYNQ-Z2 (For ADC and DSP. Also has the capabilities for I2S audio filtering)
+Sensors - VL53L4CX and STHS34PF80
 
-Microcontroller - STM32F407G-DISC1 (Hosting a server and handling communications between FPGA and MATLAB)
-
-Sensors - [] (Perferably analog)
-
-Coding Languages - MATLAB, C/C++, (Maybe php, or javascript)
+Coding Languages - C/C++
