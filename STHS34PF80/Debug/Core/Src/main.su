@@ -1,0 +1,15 @@
+../Core/Src/main.c:84:16:platform_write	40	static
+../Core/Src/main.c:88:16:platform_read	40	static
+../Core/Src/main.c:92:13:tx_com	16	static
+../Core/Src/main.c:96:13:platform_delay	16	static
+../Core/Src/main.c:100:6:sths34pf80_tmos_presence_detection_handler	4	static
+../Core/Src/main.c:105:10:map	16	static
+../Core/Src/main.c:116:5:main	64	static
+../Core/Src/main.c:307:6:SystemClock_Config	88	static
+../Core/Src/main.c:355:13:MX_I2C1_Init	8	static
+../Core/Src/main.c:389:13:MX_I2C2_Init	8	static
+../Core/Src/main.c:423:13:MX_TIM1_Init	96	static
+../Core/Src/main.c:498:13:MX_USART2_UART_Init	8	static
+../Core/Src/main.c:531:13:MX_GPIO_Init	48	static
+../Core/Src/main.c:594:6:HAL_GPIO_EXTI_Callback	16	static
+../Core/Src/main.c:610:6:Error_Handler	4	static,ignoring_inline_asm

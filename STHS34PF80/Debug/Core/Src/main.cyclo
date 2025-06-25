@@ -1,0 +1,15 @@
+../Core/Src/main.c:84:16:platform_write	1
+../Core/Src/main.c:88:16:platform_read	1
+../Core/Src/main.c:92:13:tx_com	1
+../Core/Src/main.c:96:13:platform_delay	1
+../Core/Src/main.c:100:6:sths34pf80_tmos_presence_detection_handler	1
+../Core/Src/main.c:105:10:map	1
+../Core/Src/main.c:116:5:main	10
+../Core/Src/main.c:307:6:SystemClock_Config	3
+../Core/Src/main.c:355:13:MX_I2C1_Init	2
+../Core/Src/main.c:389:13:MX_I2C2_Init	2
+../Core/Src/main.c:423:13:MX_TIM1_Init	7
+../Core/Src/main.c:498:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:531:13:MX_GPIO_Init	1
+../Core/Src/main.c:594:6:HAL_GPIO_EXTI_Callback	2
+../Core/Src/main.c:610:6:Error_Handler	1
