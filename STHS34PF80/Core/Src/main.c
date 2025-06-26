@@ -156,7 +156,7 @@ int main(void)
 
 	/* Initialize platform specific hardware */
 
-	// Set CS to High
+	/* Set CS to High */
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);
 
 	/* Wait sensor boot time */
@@ -240,10 +240,10 @@ while (1)
 
 		  ambient_temp_celsius = (float)ambient_temp_raw / 100.0f;
 
-		  	int16_t sensor_min = 200;  // Example: a reading below this is no one
-			uint16_t sensor_max = 22000; // Example: a reading above this is a large crowd
+		  	int16_t sensor_min = 200;
+			uint16_t sensor_max = 22000;
 			uint16_t pwm_min = 0;       // 0% duty cycle
-			uint16_t pwm_max = 999;     // Max duty cycle (matches our Counter Period)
+			uint16_t pwm_max = 999;     // Max duty cycle 
 
 			/* BUZZER OFFSET FROM USART */
 			if (func_status.pres_flag)
@@ -593,11 +593,9 @@ static void MX_GPIO_Init(void)
   */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-  // This line correctly checks if the interrupt came from PIN #0.
+  /* Pin PA0 Sends an Interrupt to the INT Pin */
   if (GPIO_Pin == GPIO_PIN_0)
   {
-    // Since you configured PA0 as EXTI0, this code will now run
-    // when the sensor's INT pin sends a signal.
     wakeup_thread = 1;
   }
 }
