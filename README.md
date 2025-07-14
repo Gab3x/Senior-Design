@@ -35,6 +35,6 @@ Tech:
 
 Microcontroller - STM32F446RE NUCLEO
 
-Sensors - VL53L3CX and STHS34PF80
+Sensors - VL53L3CX, STHS34PF80, and an Arduino Ultrasonic Sensor
 
 Coding Languages - C/C++
