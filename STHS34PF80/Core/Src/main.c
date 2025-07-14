@@ -52,8 +52,11 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
+I2C_HandleTypeDef hi2c3;
 
-TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim8;
+TIM_HandleTypeDef htim12;
 
 UART_HandleTypeDef huart2;
 
@@ -63,6 +66,7 @@ uint8_t STH_BUF[8];
 uint8_t *val;
 static uint8_t tx_buffer[1000];
 static stmdev_ctx_t dev_ctx;
+static stmdev_ctx_t dev_ctx_2;
 static int wakeup_thread = 0;
 
 
@@ -71,10 +75,13 @@ static int wakeup_thread = 0;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void);
+static void MX_I2C1_Init(void); // IR Sensor 1
 static void MX_USART2_UART_Init(void);
-static void MX_I2C2_Init(void);
-static void MX_TIM1_Init(void);
+static void MX_I2C2_Init(void); // IR Sensor 2
+static void MX_TIM3_Init(void); // IR Sensor 1 PWM
+static void MX_I2C3_Init(void); // Arduino Ultra Sonic Sensor
+static void MX_TIM8_Init(void); // IR Sensor 2 PWM
+static void MX_TIM12_Init(void); // Arduino PWM
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -102,9 +109,14 @@ void sths34pf80_tmos_presence_detection_handler(void)
 	wakeup_thread = 1;
 }
 
-uint16_t map(uint16_t x, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max)
+int16_t map(float x, float in_min, float in_max, float out_min, float out_max)
 {
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+	//x = in_min || 0
+	//x = 0 || 13
+	//x = in_max || 999
+
+  float y = (x - in_min) * (out_max) / (in_max - in_min);
+  return y;
 }
 
 /* USER CODE END 0 */
@@ -141,12 +153,20 @@ int main(void)
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   MX_I2C2_Init();
-  MX_TIM1_Init();
+  MX_TIM3_Init();
+  MX_I2C3_Init();
+  MX_TIM8_Init();
+  MX_TIM12_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim12, TIM_CHANNEL_1);
 
 	uint8_t whoami;
 	sths34pf80_lpf_bandwidth_t lpf_m, lpf_p, lpf_p_m, lpf_a_t;
+
+	uint8_t whoami_2;
+	sths34pf80_lpf_bandwidth_t lpf_m_2, lpf_p_2, lpf_p_m_2, lpf_a_t_2;
 
 	/* Initialize mems driver interface */
 	dev_ctx.write_reg = platform_write;
@@ -154,21 +174,32 @@ int main(void)
 	dev_ctx.mdelay = platform_delay;
 	dev_ctx.handle = &hi2c1;
 
+	dev_ctx_2.write_reg = platform_write;
+	dev_ctx_2.read_reg = platform_read;
+	dev_ctx_2.mdelay = platform_delay;
+	dev_ctx_2.handle = &hi2c2;
+
 	/* Initialize platform specific hardware */
 
-	/* Set CS to High */
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);
+	// Set CS to High
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);
 
 	/* Wait sensor boot time */
 	platform_delay(BOOT_TIME);
 
 	/* Check device ID */
 	sths34pf80_device_id_get(&dev_ctx, &whoami);
+	sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
 
 	while(whoami != STHS34PF80_ID){
 		HAL_UART_Transmit(&huart2, err_buf, 12, 1000);
 		HAL_Delay(1000);
 		sths34pf80_device_id_get(&dev_ctx, &whoami);
+	}
+	while(whoami_2 != STHS34PF80_ID){
+		HAL_UART_Transmit(&huart2, err_buf, 12, 1000);
+		HAL_Delay(1000);
+		sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
 	}
 	snprintf((char *)tx_buffer, sizeof(tx_buffer), "Device Found! WHO_AM_I: 0x%02X\r\n", whoami);
 	tx_com(tx_buffer, strlen((char const *)tx_buffer));
@@ -176,11 +207,19 @@ int main(void)
 	sths34pf80_avg_tobject_num_set(&dev_ctx, STHS34PF80_AVG_TMOS_32);
 	sths34pf80_avg_tambient_num_set(&dev_ctx, STHS34PF80_AVG_T_8);
 
+	sths34pf80_avg_tobject_num_set(&dev_ctx_2, STHS34PF80_AVG_TMOS_32);
+	sths34pf80_avg_tambient_num_set(&dev_ctx_2, STHS34PF80_AVG_T_8);
+
 	/* read filters */
 	sths34pf80_lpf_m_bandwidth_get(&dev_ctx, &lpf_m);
 	sths34pf80_lpf_p_bandwidth_get(&dev_ctx, &lpf_p);
 	sths34pf80_lpf_p_m_bandwidth_get(&dev_ctx, &lpf_p_m);
 	sths34pf80_lpf_a_t_bandwidth_get(&dev_ctx, &lpf_a_t);
+
+	sths34pf80_lpf_m_bandwidth_get(&dev_ctx_2, &lpf_m_2);
+	sths34pf80_lpf_p_bandwidth_get(&dev_ctx_2, &lpf_p_2);
+	sths34pf80_lpf_p_m_bandwidth_get(&dev_ctx_2, &lpf_p_m_2);
+	sths34pf80_lpf_a_t_bandwidth_get(&dev_ctx_2, &lpf_a_t_2);
 
 	snprintf((char *)tx_buffer, sizeof(tx_buffer),
 			"lpf_m: %02d, lpf_p: %02d, lpf_p_m: %02d, lpf_a_t: %02d\r\n",
@@ -198,28 +237,60 @@ int main(void)
 
 	sths34pf80_algo_reset(&dev_ctx);
 
+	sths34pf80_block_data_update_set(&dev_ctx_2, 1);
+
+	sths34pf80_presence_threshold_set(&dev_ctx_2, 200);
+	sths34pf80_presence_hysteresis_set(&dev_ctx_2, 20);
+	sths34pf80_motion_threshold_set(&dev_ctx_2, 300);
+	sths34pf80_motion_hysteresis_set(&dev_ctx_2, 30);
+
+	sths34pf80_algo_reset(&dev_ctx_2);
+
 	/* Set interrupt */
 	sths34pf80_int_or_set(&dev_ctx, STHS34PF80_INT_PRESENCE);
 	sths34pf80_route_int_set(&dev_ctx, STHS34PF80_INT_OR);
 
+	sths34pf80_int_or_set(&dev_ctx_2, STHS34PF80_INT_PRESENCE);
+	sths34pf80_route_int_set(&dev_ctx_2, STHS34PF80_INT_OR);
+
 	/* Set ODR */
 	sths34pf80_odr_set(&dev_ctx, STHS34PF80_ODR_AT_30Hz);
+	sths34pf80_odr_set(&dev_ctx_2, STHS34PF80_ODR_AT_30Hz);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	sths34pf80_func_status_t func_status;
+	sths34pf80_func_status_t func_status_2;
 
 	uint16_t buzzer_strength;
+	uint16_t buzzer_strength_2;
+	uint16_t buzzer_strength_3;
 
 	int16_t object_temp_raw;
 	int16_t ambient_temp_raw;
 	float ambient_temp_celsius;
 
+	int16_t object_temp_raw_2;
+	int16_t ambient_temp_raw_2;
+	float ambient_temp_celsius_2;
+
 	uint8_t motion = 0;
 	uint8_t presence = 0;
 
+	uint8_t motion_2 = 0;
+	uint8_t presence_2 = 0;
+
+	float sensor_min = -50.0;  // Example: a reading below this is no one
+	float sensor_max = 20000.0; // Example: a reading above this is a large crowd
+
+	float sensor_min_2 = -50.0;  // Example: a reading below this is no one
+	float sensor_max_2 = 20000.0; // Example: a reading above this is a large crowd
+
+	float pwm_min = 0.0;       // 0% duty cycle
+	float pwm_max = 999.0;     // Max duty cycle (matches the Counter Period)
+	uint8_t counter = 0;
 while (1)
 {
     /* USER CODE END WHILE */
@@ -238,65 +309,118 @@ while (1)
 		  sths34pf80_tobject_raw_get(&dev_ctx, &object_temp_raw);
 		  sths34pf80_tambient_raw_get(&dev_ctx, &ambient_temp_raw);
 
+		  sths34pf80_func_status_get(&dev_ctx_2, &func_status_2);
+
+		  sths34pf80_tobject_raw_get(&dev_ctx_2, &object_temp_raw_2);
+		  sths34pf80_tambient_raw_get(&dev_ctx_2, &ambient_temp_raw_2);
+
 		  ambient_temp_celsius = (float)ambient_temp_raw / 100.0f;
+		  ambient_temp_celsius_2 = (float)ambient_temp_raw_2 / 100.0f;
 
-		  	int16_t sensor_min = 200;
-			uint16_t sensor_max = 22000;
-			uint16_t pwm_min = 0;       // 0% duty cycle
-			uint16_t pwm_max = 999;     // Max duty cycle 
-
-			/* BUZZER OFFSET FROM USART */
-			if (func_status.pres_flag)
-			{
-			buzzer_strength = map(object_temp_raw, sensor_min, sensor_max, pwm_min, pwm_max);
-			if (buzzer_strength < pwm_min) buzzer_strength = pwm_min;
-			if (buzzer_strength > pwm_max) buzzer_strength = pwm_max;
-
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, buzzer_strength);
-			platform_delay(BOOT_TIME);
-			}
-			else
-			{
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-			platform_delay(BOOT_TIME);
-			}
-			/* BUZZER OFFSET FROM USART */
-
-		  if (func_status.pres_flag != presence)
-		  {
-			presence = func_status.pres_flag;
-
-			if (presence)
-			{
-			  snprintf((char *)tx_buffer, sizeof(tx_buffer), "Start of Presence\r\n");
-			  tx_com(tx_buffer, strlen((char const *)tx_buffer));
-
-				snprintf((char *)tx_buffer, sizeof(tx_buffer),
-					  "--> IR Value: %d, Ambient Temp: %.2f C\r\n",
-					  object_temp_raw, ambient_temp_celsius);
-
-				tx_com(tx_buffer, strlen((char const *)tx_buffer));
-			}
-			else
-			{
-			  snprintf((char *)tx_buffer, sizeof(tx_buffer), "End of Presence\r\n");
-			  tx_com(tx_buffer, strlen((char const *)tx_buffer));
-			}
-		  }
-
-		  if (func_status.mot_flag != motion)
+		  // RIGHT SIDE SENSOR
+		if (func_status.mot_flag != motion)
 		  {
 			motion = func_status.mot_flag;
 
 			if (motion)
 			{
-			  snprintf((char *)tx_buffer, sizeof(tx_buffer), "Motion Detected!\r\n");
+			  snprintf((char *)tx_buffer, sizeof(tx_buffer), "\nMotion Detected!(Right Side)\r\n");
 			  tx_com(tx_buffer, strlen((char const *)tx_buffer));
 
 			}
 		  }
+		// LEFT SIDE SENSOR
+		if (func_status_2.mot_flag != motion_2)
+			  {
+				motion_2 = func_status_2.mot_flag;
+
+				if (motion_2)
+				{
+				  snprintf((char *)tx_buffer, sizeof(tx_buffer), "\nMotion Detected!(Left Side)\r\n");
+				  tx_com(tx_buffer, strlen((char const *)tx_buffer));
+
+				}
+			  }
+
+		  if (func_status.pres_flag != presence || func_status_2.pres_flag != presence_2)
+		  {
+			presence = func_status.pres_flag;
+			presence_2 = func_status_2.pres_flag;
+			 snprintf((char *)tx_buffer, sizeof(tx_buffer), "\n**Start of Presence**\r\n");
+			 tx_com(tx_buffer, strlen((char const *)tx_buffer));
+			while (presence || presence_2)
+			{
+
+			  buzzer_strength = map((float)object_temp_raw, sensor_min, sensor_max, pwm_min, pwm_max);
+			  if (object_temp_raw < sensor_min) buzzer_strength = pwm_min;
+			  if (object_temp_raw > sensor_max) buzzer_strength = pwm_max;
+
+			  buzzer_strength = map((float)object_temp_raw_2, sensor_min_2, sensor_max_2, pwm_min, pwm_max);
+			  if (object_temp_raw_2 < sensor_min_2) buzzer_strength_2 = pwm_min;
+			  if (object_temp_raw_2 > sensor_max_2) buzzer_strength_2 = pwm_max;
+
+			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, buzzer_strength);
+			  platform_delay(BOOT_TIME);
+			  __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, buzzer_strength_2);
+			  platform_delay(BOOT_TIME);
+
+				snprintf((char *)tx_buffer, sizeof(tx_buffer),
+					  "--> Right Side IR Value: %d, Ambient Temp: %.2f C, Strength: %d\r\n",
+					  object_temp_raw, ambient_temp_celsius, buzzer_strength);
+
+				tx_com(tx_buffer, strlen((char const *)tx_buffer));
+
+				snprintf((char *)tx_buffer, sizeof(tx_buffer),
+					  "--> Left Side IR Value: %d, Ambient Temp: %.2f C, Strength: %d\r\n",
+					  object_temp_raw_2, ambient_temp_celsius_2, buzzer_strength_2);
+
+				tx_com(tx_buffer, strlen((char const *)tx_buffer));
+
+				sths34pf80_func_status_get(&dev_ctx, &func_status);
+
+			    sths34pf80_tobject_raw_get(&dev_ctx, &object_temp_raw);
+			    sths34pf80_tambient_raw_get(&dev_ctx, &ambient_temp_raw);
+
+			    ambient_temp_celsius = (float)ambient_temp_raw / 100.0f;
+
+			    sths34pf80_func_status_get(&dev_ctx_2, &func_status_2);
+
+				sths34pf80_tobject_raw_get(&dev_ctx_2, &object_temp_raw_2);
+				sths34pf80_tambient_raw_get(&dev_ctx_2, &ambient_temp_raw_2);
+
+				ambient_temp_celsius_2 = (float)ambient_temp_raw_2 / 100.0f;
+
+			    if (counter < 50){
+					  if (object_temp_raw < sensor_min) sensor_min = object_temp_raw;
+					  if (object_temp_raw > sensor_max) sensor_max = object_temp_raw;
+
+					  if (object_temp_raw_2 < sensor_min) sensor_min_2 = object_temp_raw_2;
+					  if (object_temp_raw_2 > sensor_max) sensor_max_2 = object_temp_raw_2;
+
+					  counter = counter + 1;
+				  }
+				  else {
+					  if (object_temp_raw < sensor_min) sensor_min = -100.0;
+					  if (object_temp_raw > sensor_max) sensor_max = 9999.0;
+
+					  if (object_temp_raw_2 < sensor_min) sensor_min_2 = -100.0;
+					  if (object_temp_raw_2 > sensor_max) sensor_max_2 = 9999.0;
+					  counter = 0;
+				  }
+			    HAL_Delay(100);
+			}
+			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+			  __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, 0);
+			  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, 0);
+			  platform_delay(BOOT_TIME);
+
+			  snprintf((char *)tx_buffer, sizeof(tx_buffer), "\n**End of Presence**\r\n");
+			  tx_com(tx_buffer, strlen((char const *)tx_buffer));
+		  }
 		} //while (func_status.pres_flag);
-	} HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+	} HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim12, TIM_CHANNEL_1);
   /* USER CODE END 3 */
 }
 
@@ -399,7 +523,7 @@ static void MX_I2C2_Init(void)
   hi2c2.Instance = I2C2;
   hi2c2.Init.ClockSpeed = 100000;
   hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c2.Init.OwnAddress1 = 164;
+  hi2c2.Init.OwnAddress1 = 180;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   hi2c2.Init.OwnAddress2 = 0;
@@ -416,48 +540,141 @@ static void MX_I2C2_Init(void)
 }
 
 /**
-  * @brief TIM1 Initialization Function
+  * @brief I2C3 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_TIM1_Init(void)
+static void MX_I2C3_Init(void)
 {
 
-  /* USER CODE BEGIN TIM1_Init 0 */
+  /* USER CODE BEGIN I2C3_Init 0 */
 
-  /* USER CODE END TIM1_Init 0 */
+  /* USER CODE END I2C3_Init 0 */
+
+  /* USER CODE BEGIN I2C3_Init 1 */
+
+  /* USER CODE END I2C3_Init 1 */
+  hi2c3.Instance = I2C3;
+  hi2c3.Init.ClockSpeed = 100000;
+  hi2c3.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c3.Init.OwnAddress1 = 174;
+  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c3.Init.OwnAddress2 = 0;
+  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C3_Init 2 */
+
+  /* USER CODE END I2C3_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 63;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 999;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM8_Init(void)
+{
+
+  /* USER CODE BEGIN TIM8_Init 0 */
+
+  /* USER CODE END TIM8_Init 0 */
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
-  /* USER CODE BEGIN TIM1_Init 1 */
+  /* USER CODE BEGIN TIM8_Init 1 */
 
-  /* USER CODE END TIM1_Init 1 */
-  htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 83;
-  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 999;
-  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  /* USER CODE END TIM8_Init 1 */
+  htim8.Instance = TIM8;
+  htim8.Init.Prescaler = 63;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim8.Init.Period = 999;
+  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim8.Init.RepetitionCounter = 0;
+  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim8) != HAL_OK)
   {
     Error_Handler();
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  if (HAL_TIM_ConfigClockSource(&htim8, &sClockSourceConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim8) != HAL_OK)
   {
     Error_Handler();
   }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
@@ -468,7 +685,7 @@ static void MX_TIM1_Init(void)
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
   sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -479,14 +696,66 @@ static void MX_TIM1_Init(void)
   sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
   sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
   sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim8, &sBreakDeadTimeConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM1_Init 2 */
+  /* USER CODE BEGIN TIM8_Init 2 */
 
-  /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
+  /* USER CODE END TIM8_Init 2 */
+  HAL_TIM_MspPostInit(&htim8);
+
+}
+
+/**
+  * @brief TIM12 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM12_Init(void)
+{
+
+  /* USER CODE BEGIN TIM12_Init 0 */
+
+  /* USER CODE END TIM12_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM12_Init 1 */
+
+  /* USER CODE END TIM12_Init 1 */
+  htim12.Instance = TIM12;
+  htim12.Init.Prescaler = 63;
+  htim12.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim12.Init.Period = 999;
+  htim12.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim12.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim12) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim12, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim12) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim12, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM12_Init 2 */
+
+  /* USER CODE END TIM12_Init 2 */
+  HAL_TIM_MspPostInit(&htim12);
 
 }
 
@@ -545,7 +814,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(CS__1_GPIO_Port, CS__1_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(CS__1_GPIO_Port, CS__1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -593,9 +862,10 @@ static void MX_GPIO_Init(void)
   */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-  /* Pin PA0 Sends an Interrupt to the INT Pin */
+  // Checks if the interrupt came from PIN A0
   if (GPIO_Pin == GPIO_PIN_0)
   {
+    // INT Pin recieves signal
     wakeup_thread = 1;
   }
 }
