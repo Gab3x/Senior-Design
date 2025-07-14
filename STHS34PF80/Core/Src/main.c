@@ -42,6 +42,13 @@
 #define MODULE_TYPE 0x0110 // Value should be 0xAA
 // VLX --------
 
+// ARDUINO
+#define TRIG_PIN GPIO_PIN_9
+#define TRIG_PORT GPIOA
+#define ECHO_PIN GPIO_PIN_14
+#define ECHO_PORT GPIOB
+//ARDUINO
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,6 +62,7 @@ I2C_HandleTypeDef hi2c2;
 I2C_HandleTypeDef hi2c3;
 
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim8;
 TIM_HandleTypeDef htim12;
 
@@ -68,20 +76,22 @@ static uint8_t tx_buffer[1000];
 static stmdev_ctx_t dev_ctx;
 static stmdev_ctx_t dev_ctx_2;
 static int wakeup_thread = 0;
-
+float calibration_factor = 1.0;  // Calibration factor for adjusting measurements.
+float temperature = 20.0;        // Air temperature in °C for calculating the speed of sound.
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void); // IR Sensor 1
+static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_I2C2_Init(void); // IR Sensor 2
-static void MX_TIM3_Init(void); // IR Sensor 1 PWM
-static void MX_I2C3_Init(void); // Arduino Ultra Sonic Sensor
-static void MX_TIM8_Init(void); // IR Sensor 2 PWM
-static void MX_TIM12_Init(void); // Arduino PWM
+static void MX_I2C2_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_I2C3_Init(void);
+static void MX_TIM8_Init(void);
+static void MX_TIM12_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -118,6 +128,146 @@ int16_t map(float x, float in_min, float in_max, float out_min, float out_max)
   float y = (x - in_min) * (out_max) / (in_max - in_min);
   return y;
 }
+void delay (uint16_t time)
+{
+	__HAL_TIM_SET_COUNTER(&htim12, 0);
+	while (__HAL_TIM_GET_COUNTER (&htim12) < time);
+}
+void micro_delay(uint32_t delay_us) {
+  __HAL_TIM_SET_COUNTER(&htim12, 0); // Reset the timer counter to start the count.
+  while (__HAL_TIM_GET_COUNTER(&htim12) < delay_us); // Wait in a loop until the counter reaches the specified value (delay_us microseconds).
+}
+
+uint32_t IC_Val1 = 0;
+uint32_t IC_Val2 = 0;
+uint32_t Difference = 0;
+uint8_t Is_First_Captured = 0;  // the first value captured
+uint8_t Distance  = 0;
+uint32_t pulse_start = 0;  // Timer value at the start of the echo pulse (in microseconds).
+uint32_t pulse_end = 0;    // Timer value at the end of the echo pulse.
+uint32_t pulse_width = 0;  // The difference between pulse_end and pulse_start, representing the echo pulse duration.
+uint32_t timeout = 30000;  // Maximum waiting time for the echo signal (30 ms).
+float distance = 0.0;      // Calculated distance to the object (in centimeters).
+float sound_speed = 0.0;   // Speed of sound (in cm/µs) calculated taking the air temperature into account.
+
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)  // if the interrupt source is channel1
+	{
+		if (Is_First_Captured==0) // if the first value is not captured
+		{
+			IC_Val1 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1); // read the first value
+			Is_First_Captured = 1;  // set the first captured as true
+			// Now change the polarity to falling edge
+			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_FALLING);
+		}
+		else if (Is_First_Captured==1)   // if the first is already captured
+		{
+			IC_Val2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);  // read second value
+			__HAL_TIM_SET_COUNTER(htim, 0);  // reset the counter
+			if (IC_Val2 > IC_Val1)
+			{
+				Difference = IC_Val2-IC_Val1;
+			}
+			else if (IC_Val1 > IC_Val2)
+			{
+				Difference = (0xffff - IC_Val1) + IC_Val2;
+			}
+			Distance = Difference * .034/2;
+			Is_First_Captured = 0; // set it back to false
+			// set polarity to rising edge
+			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
+			__HAL_TIM_DISABLE_IT(&htim12, TIM_IT_CC1);
+		}
+	}
+}
+
+void HCSR04_Read (void)
+{
+HAL_GPIO_WritePin(TRIG_PORT, TRIG_PIN, GPIO_PIN_SET);  // pull the TRIG pin HIGH
+delay(10);  // wait for 10 us
+HAL_GPIO_WritePin(TRIG_PORT, TRIG_PIN, GPIO_PIN_RESET);  // pull the TRIG pin low
+__HAL_TIM_ENABLE_IT(&htim12, TIM_IT_CC1);
+}
+
+void arduino_pulse()
+{
+// Reset the TRIG pin to LOW and wait 4 µs to stabilize the sensor.
+	HAL_GPIO_WritePin(GPIOA, TRIG_PIN, GPIO_PIN_RESET);
+	micro_delay(4);
+
+	// Generate a HIGH pulse lasting 10 µs.
+	HAL_GPIO_WritePin(GPIOA, TRIG_PIN, GPIO_PIN_SET);
+	micro_delay(10);
+	HAL_GPIO_WritePin(GPIOA, TRIG_PIN, GPIO_PIN_RESET);
+
+	/* *** Wait for the signal to appear on the ECHO pin *** */
+	// Use the timer to limit the waiting time (timeout) to avoid an infinite loop if no signal is received.
+	uint32_t timeout_timer = __HAL_TIM_GET_COUNTER(&htim12); // Record the start time of the waiting period.
+	while (HAL_GPIO_ReadPin(GPIOB, ECHO_PIN) == GPIO_PIN_RESET) {
+	  // If the difference between the current time and the start time exceeds the timeout, break the waiting loop.
+	  if ((__HAL_TIM_GET_COUNTER(&htim12) - timeout_timer) > timeout) {
+		break;
+	  }
+	}
+
+	// After the waiting loop, check if the ECHO pin has been set to HIGH:
+	// If the pin is still LOW, the signal was not received and the measurement is considered invalid.
+	if (HAL_GPIO_ReadPin(GPIOB, ECHO_PIN) != GPIO_PIN_SET) {
+	  // Send an error message via UART and skip the current measurement.
+	  HAL_UART_Transmit(&huart2, (uint8_t*)"Error: No echo\r\n", strlen("Error: No echo\r\n"), 100);
+	  HAL_Delay(200);
+	}
+
+	/* *** Measure the pulse duration on the ECHO pin *** */
+	// Record the time at the start of the pulse.
+	pulse_start = __HAL_TIM_GET_COUNTER(&htim12);
+	// Set an additional timeout for the pulse measurement.
+	uint32_t pulse_timeout = pulse_start + timeout;
+
+	// Wait while the ECHO pin remains HIGH:
+	// If the measurement time exceeds the timeout, break out of the loop.
+	while (HAL_GPIO_ReadPin(GPIOB, ECHO_PIN) == GPIO_PIN_SET) {
+	  if (__HAL_TIM_GET_COUNTER(&htim12) > pulse_timeout) {
+		break;
+	  }
+	}
+
+	// Record the time at the end of the pulse.
+	pulse_end = __HAL_TIM_GET_COUNTER(&htim12);
+
+	/* *** Calculate the pulse duration accounting for timer overflow *** */
+	// If the timer did not overflow, the difference between pulse_end and pulse_start gives the duration.
+	// If an overflow occurred (pulse_end < pulse_start), adjust the value accordingly.
+	if (pulse_end >= pulse_start) {
+	  pulse_width = pulse_end - pulse_start;
+	} else {
+	  pulse_width = (0xFFFFFFFF - pulse_start) + pulse_end;
+	}
+
+	/* *** Filter the measurements *** */
+	// Discard measurements that are too short (< 100 µs, which corresponds to ~1.7 cm)
+	// or too long (> 25000 µs, which corresponds to ~425 cm), as they are likely erroneous.
+	if (pulse_width > 25000 || pulse_width < 100) {
+	  HAL_UART_Transmit(&huart2, (uint8_t*)"Invalid pulse\r\n", strlen("Invalid pulse\r\n"), 100);
+	}
+}
+
+float arduino_sens(float pulse_width, float sound_speed)
+{
+	distance = (pulse_width * sound_speed * calibration_factor) / 2.0;
+	static float avg_buf[3] = {0};
+	static uint8_t idx = 0;
+	avg_buf[idx++] = distance;
+	if (idx >= 3) idx = 0;
+	float avg = (avg_buf[0] + avg_buf[1] + avg_buf[2]) / 3;
+
+	snprintf((char *)tx_buffer, sizeof(tx_buffer), "--> Center Sensor Distance: %.1f cm\r\n", avg);
+	tx_com(tx_buffer, strlen((char const *)tx_buffer));
+
+	return avg;
+	HAL_Delay(100);
+}
 
 /* USER CODE END 0 */
 
@@ -130,6 +280,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 	//HAL_StatusTypeDef res;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -157,6 +308,7 @@ int main(void)
   MX_I2C3_Init();
   MX_TIM8_Init();
   MX_TIM12_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
@@ -257,6 +409,7 @@ int main(void)
 	sths34pf80_odr_set(&dev_ctx, STHS34PF80_ODR_AT_30Hz);
 	sths34pf80_odr_set(&dev_ctx_2, STHS34PF80_ODR_AT_30Hz);
 
+	sound_speed = (331.3 + 0.606 * temperature) / 10000.0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -297,7 +450,6 @@ while (1)
 
     /* USER CODE BEGIN 3 */
   /* handle event in a "thread" alike code */
-
 	  if (wakeup_thread)
 	  {
 		wakeup_thread = 0;
@@ -316,6 +468,9 @@ while (1)
 
 		  ambient_temp_celsius = (float)ambient_temp_raw / 100.0f;
 		  ambient_temp_celsius_2 = (float)ambient_temp_raw_2 / 100.0f;
+
+		  arduino_pulse();
+
 
 		  // RIGHT SIDE SENSOR
 		if (func_status.mot_flag != motion)
@@ -351,16 +506,16 @@ while (1)
 			while (presence || presence_2)
 			{
 
+
 			  buzzer_strength = map((float)object_temp_raw, sensor_min, sensor_max, pwm_min, pwm_max);
 			  if (object_temp_raw < sensor_min) buzzer_strength = pwm_min;
 			  if (object_temp_raw > sensor_max) buzzer_strength = pwm_max;
 
-			  buzzer_strength = map((float)object_temp_raw_2, sensor_min_2, sensor_max_2, pwm_min, pwm_max);
+			  buzzer_strength_2 = map((float)object_temp_raw_2, sensor_min_2, sensor_max_2, pwm_min, pwm_max);
 			  if (object_temp_raw_2 < sensor_min_2) buzzer_strength_2 = pwm_min;
 			  if (object_temp_raw_2 > sensor_max_2) buzzer_strength_2 = pwm_max;
 
 			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, buzzer_strength);
-			  platform_delay(BOOT_TIME);
 			  __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, buzzer_strength_2);
 			  platform_delay(BOOT_TIME);
 
@@ -376,6 +531,9 @@ while (1)
 
 				tx_com(tx_buffer, strlen((char const *)tx_buffer));
 
+				buzzer_strength_3 = map(arduino_sens(pulse_width, sound_speed), sensor_min, sensor_max, pwm_min, pwm_max);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, buzzer_strength_3);
+
 				sths34pf80_func_status_get(&dev_ctx, &func_status);
 
 			    sths34pf80_tobject_raw_get(&dev_ctx, &object_temp_raw);
@@ -389,6 +547,8 @@ while (1)
 				sths34pf80_tambient_raw_get(&dev_ctx_2, &ambient_temp_raw_2);
 
 				ambient_temp_celsius_2 = (float)ambient_temp_raw_2 / 100.0f;
+
+				arduino_pulse();
 
 			    if (counter < 50){
 					  if (object_temp_raw < sensor_min) sensor_min = object_temp_raw;
@@ -629,6 +789,65 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 63;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 999;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
 
 }
 
