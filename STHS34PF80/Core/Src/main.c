@@ -59,7 +59,6 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
-I2C_HandleTypeDef hi2c3;
 
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
@@ -88,7 +87,6 @@ static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_I2C3_Init(void);
 static void MX_TIM8_Init(void);
 static void MX_TIM12_Init(void);
 static void MX_TIM4_Init(void);
@@ -305,12 +303,12 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C2_Init();
   MX_TIM3_Init();
-  MX_I2C3_Init();
   MX_TIM8_Init();
   MX_TIM12_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim12, TIM_CHANNEL_1);
 
@@ -570,6 +568,7 @@ while (1)
 			    HAL_Delay(100);
 			}
 			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+			  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
 			  __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, 0);
 			  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, 0);
 			  platform_delay(BOOT_TIME);
@@ -579,6 +578,7 @@ while (1)
 		  }
 		} //while (func_status.pres_flag);
 	} HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Stop(&htim12, TIM_CHANNEL_1);
   /* USER CODE END 3 */
@@ -696,40 +696,6 @@ static void MX_I2C2_Init(void)
   /* USER CODE BEGIN I2C2_Init 2 */
 
   /* USER CODE END I2C2_Init 2 */
-
-}
-
-/**
-  * @brief I2C3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C3_Init(void)
-{
-
-  /* USER CODE BEGIN I2C3_Init 0 */
-
-  /* USER CODE END I2C3_Init 0 */
-
-  /* USER CODE BEGIN I2C3_Init 1 */
-
-  /* USER CODE END I2C3_Init 1 */
-  hi2c3.Instance = I2C3;
-  hi2c3.Init.ClockSpeed = 100000;
-  hi2c3.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c3.Init.OwnAddress1 = 174;
-  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c3.Init.OwnAddress2 = 0;
-  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C3_Init 2 */
-
-  /* USER CODE END I2C3_Init 2 */
 
 }
 
@@ -945,9 +911,9 @@ static void MX_TIM12_Init(void)
 
   /* USER CODE END TIM12_Init 1 */
   htim12.Instance = TIM12;
-  htim12.Init.Prescaler = 63;
+  htim12.Init.Prescaler = 83;
   htim12.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim12.Init.Period = 999;
+  htim12.Init.Period = 0xffff - 1;
   htim12.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim12.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim12) != HAL_OK)
@@ -1060,6 +1026,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CS__1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF4_I2C3;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
