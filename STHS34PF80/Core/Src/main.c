@@ -148,6 +148,12 @@ uint32_t timeout = 30000;  // Maximum waiting time for the echo signal (30 ms).
 float distance = 0.0;      // Calculated distance to the object (in centimeters).
 float sound_speed = 0.0;   // Speed of sound (in cm/µs) calculated taking the air temperature into account.
 
+uint8_t whoami;
+sths34pf80_lpf_bandwidth_t lpf_m, lpf_p, lpf_p_m, lpf_a_t;
+uint8_t whoami_2;
+sths34pf80_lpf_bandwidth_t lpf_m_2, lpf_p_2, lpf_p_m_2, lpf_a_t_2;
+
+
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
 	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)  // if the interrupt source is channel1
@@ -267,6 +273,69 @@ float arduino_sens(float pulse_width, float sound_speed)
 	HAL_Delay(100);
 }
 
+void init_sensor_1()
+{
+	dev_ctx.write_reg = platform_write;
+	dev_ctx.read_reg = platform_read;
+	dev_ctx.mdelay = platform_delay;
+	dev_ctx.handle = &hi2c1;
+
+	sths34pf80_avg_tobject_num_set(&dev_ctx, STHS34PF80_AVG_TMOS_32);
+	sths34pf80_avg_tambient_num_set(&dev_ctx, STHS34PF80_AVG_T_8);
+
+	sths34pf80_lpf_m_bandwidth_get(&dev_ctx, &lpf_m);
+	sths34pf80_lpf_p_bandwidth_get(&dev_ctx, &lpf_p);
+	sths34pf80_lpf_p_m_bandwidth_get(&dev_ctx, &lpf_p_m);
+	sths34pf80_lpf_a_t_bandwidth_get(&dev_ctx, &lpf_a_t);
+
+	sths34pf80_block_data_update_set(&dev_ctx, 1);
+
+	sths34pf80_presence_threshold_set(&dev_ctx, 200);
+	sths34pf80_presence_hysteresis_set(&dev_ctx, 20);
+	sths34pf80_motion_threshold_set(&dev_ctx, 300);
+	sths34pf80_motion_hysteresis_set(&dev_ctx, 30);
+
+	sths34pf80_algo_reset(&dev_ctx);
+
+	sths34pf80_int_or_set(&dev_ctx, STHS34PF80_INT_PRESENCE);
+	sths34pf80_route_int_set(&dev_ctx, STHS34PF80_INT_OR);
+
+	sths34pf80_odr_set(&dev_ctx, STHS34PF80_ODR_AT_30Hz);
+
+	sths34pf80_device_id_get(&dev_ctx, &whoami);
+}
+
+void init_sensor_2()
+{
+	dev_ctx_2.write_reg = platform_write;
+	dev_ctx_2.read_reg = platform_read;
+	dev_ctx_2.mdelay = platform_delay;
+	dev_ctx_2.handle = &hi2c2;
+
+	sths34pf80_avg_tobject_num_set(&dev_ctx_2, STHS34PF80_AVG_TMOS_32);
+	sths34pf80_avg_tambient_num_set(&dev_ctx_2, STHS34PF80_AVG_T_8);
+
+	sths34pf80_lpf_m_bandwidth_get(&dev_ctx_2, &lpf_m_2);
+	sths34pf80_lpf_p_bandwidth_get(&dev_ctx_2, &lpf_p_2);
+	sths34pf80_lpf_p_m_bandwidth_get(&dev_ctx_2, &lpf_p_m_2);
+	sths34pf80_lpf_a_t_bandwidth_get(&dev_ctx_2, &lpf_a_t_2);
+
+	sths34pf80_block_data_update_set(&dev_ctx_2, 1);
+
+	sths34pf80_presence_threshold_set(&dev_ctx_2, 200);
+	sths34pf80_presence_hysteresis_set(&dev_ctx_2, 20);
+	sths34pf80_motion_threshold_set(&dev_ctx_2, 300);
+	sths34pf80_motion_hysteresis_set(&dev_ctx_2, 30);
+
+	sths34pf80_algo_reset(&dev_ctx_2);
+
+	sths34pf80_int_or_set(&dev_ctx_2, STHS34PF80_INT_PRESENCE);
+	sths34pf80_route_int_set(&dev_ctx_2, STHS34PF80_INT_OR);
+
+	sths34pf80_odr_set(&dev_ctx_2, STHS34PF80_ODR_AT_30Hz);
+
+	sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
+}
 /* USER CODE END 0 */
 
 /**
@@ -312,34 +381,16 @@ int main(void)
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim12, TIM_CHANNEL_1);
 
-	uint8_t whoami;
-	sths34pf80_lpf_bandwidth_t lpf_m, lpf_p, lpf_p_m, lpf_a_t;
 
-	uint8_t whoami_2;
-	sths34pf80_lpf_bandwidth_t lpf_m_2, lpf_p_2, lpf_p_m_2, lpf_a_t_2;
-
-	/* Initialize mems driver interface */
-	dev_ctx.write_reg = platform_write;
-	dev_ctx.read_reg = platform_read;
-	dev_ctx.mdelay = platform_delay;
-	dev_ctx.handle = &hi2c1;
-
-	dev_ctx_2.write_reg = platform_write;
-	dev_ctx_2.read_reg = platform_read;
-	dev_ctx_2.mdelay = platform_delay;
-	dev_ctx_2.handle = &hi2c2;
-
-	/* Initialize platform specific hardware */
 
 	// Set CS to High
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);
 
 	/* Wait sensor boot time */
-	platform_delay(BOOT_TIME);
+	init_sensor_1();
+	init_sensor_2();
 
-	/* Check device ID */
-	sths34pf80_device_id_get(&dev_ctx, &whoami);
-	sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
+	platform_delay(BOOT_TIME);
 
 	while(whoami != STHS34PF80_ID){
 		HAL_UART_Transmit(&huart2, err_buf, 12, 1000);
@@ -354,58 +405,11 @@ int main(void)
 	snprintf((char *)tx_buffer, sizeof(tx_buffer), "Device Found! WHO_AM_I: 0x%02X\r\n", whoami);
 	tx_com(tx_buffer, strlen((char const *)tx_buffer));
 
-	sths34pf80_avg_tobject_num_set(&dev_ctx, STHS34PF80_AVG_TMOS_32);
-	sths34pf80_avg_tambient_num_set(&dev_ctx, STHS34PF80_AVG_T_8);
-
-	sths34pf80_avg_tobject_num_set(&dev_ctx_2, STHS34PF80_AVG_TMOS_32);
-	sths34pf80_avg_tambient_num_set(&dev_ctx_2, STHS34PF80_AVG_T_8);
-
-	/* read filters */
-	sths34pf80_lpf_m_bandwidth_get(&dev_ctx, &lpf_m);
-	sths34pf80_lpf_p_bandwidth_get(&dev_ctx, &lpf_p);
-	sths34pf80_lpf_p_m_bandwidth_get(&dev_ctx, &lpf_p_m);
-	sths34pf80_lpf_a_t_bandwidth_get(&dev_ctx, &lpf_a_t);
-
-	sths34pf80_lpf_m_bandwidth_get(&dev_ctx_2, &lpf_m_2);
-	sths34pf80_lpf_p_bandwidth_get(&dev_ctx_2, &lpf_p_2);
-	sths34pf80_lpf_p_m_bandwidth_get(&dev_ctx_2, &lpf_p_m_2);
-	sths34pf80_lpf_a_t_bandwidth_get(&dev_ctx_2, &lpf_a_t_2);
-
 	snprintf((char *)tx_buffer, sizeof(tx_buffer),
 			"lpf_m: %02d, lpf_p: %02d, lpf_p_m: %02d, lpf_a_t: %02d\r\n",
 			 lpf_m, lpf_p, lpf_p_m, lpf_a_t);
 
 	tx_com(tx_buffer, strlen((char const *)tx_buffer));
-
-	/* Set BDU */
-	sths34pf80_block_data_update_set(&dev_ctx, 1);
-
-	sths34pf80_presence_threshold_set(&dev_ctx, 200);
-	sths34pf80_presence_hysteresis_set(&dev_ctx, 20);
-	sths34pf80_motion_threshold_set(&dev_ctx, 300);
-	sths34pf80_motion_hysteresis_set(&dev_ctx, 30);
-
-	sths34pf80_algo_reset(&dev_ctx);
-
-	sths34pf80_block_data_update_set(&dev_ctx_2, 1);
-
-	sths34pf80_presence_threshold_set(&dev_ctx_2, 200);
-	sths34pf80_presence_hysteresis_set(&dev_ctx_2, 20);
-	sths34pf80_motion_threshold_set(&dev_ctx_2, 300);
-	sths34pf80_motion_hysteresis_set(&dev_ctx_2, 30);
-
-	sths34pf80_algo_reset(&dev_ctx_2);
-
-	/* Set interrupt */
-	sths34pf80_int_or_set(&dev_ctx, STHS34PF80_INT_PRESENCE);
-	sths34pf80_route_int_set(&dev_ctx, STHS34PF80_INT_OR);
-
-	sths34pf80_int_or_set(&dev_ctx_2, STHS34PF80_INT_PRESENCE);
-	sths34pf80_route_int_set(&dev_ctx_2, STHS34PF80_INT_OR);
-
-	/* Set ODR */
-	sths34pf80_odr_set(&dev_ctx, STHS34PF80_ODR_AT_30Hz);
-	sths34pf80_odr_set(&dev_ctx_2, STHS34PF80_ODR_AT_30Hz);
 
 	sound_speed = (331.3 + 0.606 * temperature) / 10000.0;
   /* USER CODE END 2 */
@@ -442,6 +446,7 @@ int main(void)
 	float pwm_min = 0.0;       // 0% duty cycle
 	float pwm_max = 999.0;     // Max duty cycle (matches the Counter Period)
 	uint8_t counter = 0;
+
 while (1)
 {
     /* USER CODE END WHILE */
