@@ -305,11 +305,11 @@ int main(void)
   		HAL_Delay(1000);
   		sths34pf80_device_id_get(&dev_ctx, &whoami);
   	}
-//  	while(whoami_2 != STHS34PF80_ID){
-//  		HAL_UART_Transmit(&huart2, err_buf, 12, 1000);
-//  		HAL_Delay(1000);
-//  		sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
-//  	}
+  	while(whoami_2 != STHS34PF80_ID){
+  		HAL_UART_Transmit(&huart2, err_buf, 12, 1000);
+  		HAL_Delay(1000);
+  		sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
+  	}
   	snprintf((char *)tx_buffer, sizeof(tx_buffer), "Device Found! WHO_AM_I: 0x%02X\r\n", whoami);
   	tx_com(tx_buffer, strlen((char const *)tx_buffer));
 
@@ -346,25 +346,25 @@ int main(void)
 
   	sths34pf80_algo_reset(&dev_ctx);
 
-//  	sths34pf80_block_data_update_set(&dev_ctx_2, 1);
-//
-//  	sths34pf80_presence_threshold_set(&dev_ctx_2, 200);
-//  	sths34pf80_presence_hysteresis_set(&dev_ctx_2, 20);
-//  	sths34pf80_motion_threshold_set(&dev_ctx_2, 300);
-//  	sths34pf80_motion_hysteresis_set(&dev_ctx_2, 30);
-//
-//  	sths34pf80_algo_reset(&dev_ctx_2);
+  	sths34pf80_block_data_update_set(&dev_ctx_2, 1);
+
+  	sths34pf80_presence_threshold_set(&dev_ctx_2, 200);
+  	sths34pf80_presence_hysteresis_set(&dev_ctx_2, 20);
+  	sths34pf80_motion_threshold_set(&dev_ctx_2, 300);
+  	sths34pf80_motion_hysteresis_set(&dev_ctx_2, 30);
+
+  	sths34pf80_algo_reset(&dev_ctx_2);
 
   	/* Set interrupt */
   	sths34pf80_int_or_set(&dev_ctx, STHS34PF80_INT_PRESENCE);
   	sths34pf80_route_int_set(&dev_ctx, STHS34PF80_INT_OR);
 
-//  	sths34pf80_int_or_set(&dev_ctx_2, STHS34PF80_INT_PRESENCE);
-//  	sths34pf80_route_int_set(&dev_ctx_2, STHS34PF80_INT_OR);
+  	sths34pf80_int_or_set(&dev_ctx_2, STHS34PF80_INT_PRESENCE);
+  	sths34pf80_route_int_set(&dev_ctx_2, STHS34PF80_INT_OR);
 
   	/* Set ODR */
   	sths34pf80_odr_set(&dev_ctx, STHS34PF80_ODR_AT_30Hz);
-//  	sths34pf80_odr_set(&dev_ctx_2, STHS34PF80_ODR_AT_30Hz);
+  	sths34pf80_odr_set(&dev_ctx_2, STHS34PF80_ODR_AT_30Hz);
 
 	float sound_speed = (331.3 + 0.606 * temperature) / 10000.0;
   /* USER CODE END 2 */
@@ -426,13 +426,13 @@ while (1)
 
 		  pulse_width = arduino_pulse(pulse_width);
 
-//		  sths34pf80_func_status_get(&dev_ctx_2, &func_status_2);
-//
-//		  sths34pf80_tobject_raw_get(&dev_ctx_2, &object_temp_raw_2);
-//		  sths34pf80_tambient_raw_get(&dev_ctx_2, &ambient_temp_raw_2);
+		  sths34pf80_func_status_get(&dev_ctx_2, &func_status_2);
+
+		  sths34pf80_tobject_raw_get(&dev_ctx_2, &object_temp_raw_2);
+		  sths34pf80_tambient_raw_get(&dev_ctx_2, &ambient_temp_raw_2);
 
 		  ambient_temp_celsius = (float)ambient_temp_raw / 100.0f;
-		  //ambient_temp_celsius_2 = (float)ambient_temp_raw_2 / 100.0f;
+		  ambient_temp_celsius_2 = (float)ambient_temp_raw_2 / 100.0f;
 
 
 		  // RIGHT SIDE SENSOR
@@ -447,23 +447,23 @@ while (1)
 
 			}
 		  }
-		// LEFT SIDE SENSOR
-//		if (func_status_2.mot_flag != motion_2)
-//			  {
-//				motion_2 = func_status_2.mot_flag;
-//
-//				if (motion_2)
-//				{
-//				  snprintf((char *)tx_buffer, sizeof(tx_buffer), "\nMotion Detected!(Left Side)\r\n");
-//				  tx_com(tx_buffer, strlen((char const *)tx_buffer));
-//
-//				}
-//			  }
+		 LEFT SIDE SENSOR
+		if (func_status_2.mot_flag != motion_2)
+			  {
+				motion_2 = func_status_2.mot_flag;
+
+				if (motion_2)
+				{
+				  snprintf((char *)tx_buffer, sizeof(tx_buffer), "\nMotion Detected!(Left Side)\r\n");
+				  tx_com(tx_buffer, strlen((char const *)tx_buffer));
+
+				}
+			  }
 
 		  if (func_status.pres_flag != presence || func_status_2.pres_flag != presence_2)
 		  {
 			presence = func_status.pres_flag;
-			//presence_2 = func_status_2.pres_flag;
+			presence_2 = func_status_2.pres_flag;
 			 snprintf((char *)tx_buffer, sizeof(tx_buffer), "\n**Start of Presence**\r\n");
 			 tx_com(tx_buffer, strlen((char const *)tx_buffer));
 			while (presence || presence_2)
@@ -472,9 +472,9 @@ while (1)
 			  if (object_temp_raw < sensor_min) buzzer_strength = pwm_min;
 			  if (object_temp_raw > sensor_max) buzzer_strength = pwm_max;
 
-//			  buzzer_strength_2 = map((float)object_temp_raw_2, sensor_min_2, sensor_max_2, pwm_min, pwm_max);
-//			  if (object_temp_raw_2 < sensor_min_2) buzzer_strength_2 = pwm_min;
-//			  if (object_temp_raw_2 > sensor_max_2) buzzer_strength_2 = pwm_max;
+			  buzzer_strength_2 = map((float)object_temp_raw_2, sensor_min_2, sensor_max_2, pwm_min, pwm_max);
+			  if (object_temp_raw_2 < sensor_min_2) buzzer_strength_2 = pwm_min;
+			  if (object_temp_raw_2 > sensor_max_2) buzzer_strength_2 = pwm_max;
 
 			  float average_dist = arduino_sens(pulse_width, sound_speed);
 
@@ -484,7 +484,7 @@ while (1)
 			  if (average_dist > sensor_max_3) buzzer_strength_3 = pwm_max;
 
 			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, buzzer_strength);
-			  //__HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, buzzer_strength_2);
+			  __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, buzzer_strength_2);
 			  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, buzzer_strength_3);
 
 			  platform_delay(BOOT_TIME);
