@@ -35,6 +35,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define STHS34PF80_I2C_ADDRESS_7BIT   0x5A
+#define STHS34PF80_I2C2_ADDRESS_7BIT   0x5A
 #define VLX_ADDR_R 0x52
 
 // VLX --------
@@ -145,9 +146,7 @@ void micro_delay(uint32_t delay_us) {
 
 uint32_t pulse_start = 0;  // Timer value at the start of the echo pulse (in microseconds).
 uint32_t pulse_end = 0;    // Timer value at the end of the echo pulse.
-//uint32_t pulse_width = 0;  // The difference between pulse_end and pulse_start, representing the echo pulse duration.
 uint32_t timeout = 30000;  // Maximum waiting time for the echo signal (30 ms).
-//float sound_speed = 0.0;   // Speed of sound (in cm/µs) calculated taking the air temperature into account.
 
 uint16_t arduino_pulse(float pulse_width)
 {
@@ -208,7 +207,7 @@ uint16_t arduino_pulse(float pulse_width)
 	// Discard measurements that are too short (< 100 µs, which corresponds to ~1.7 cm)
 	// or too long (> 25000 µs, which corresponds to ~425 cm), as they are likely erroneous.
 	if (pulse_width > 25000 || pulse_width < 100) {
-	  HAL_UART_Transmit(&huart2, (uint8_t*)"Invalid pulse\r\n", strlen("Invalid pulse\r\n"), 100);
+		HAL_UART_Transmit(&huart2, (uint8_t*)"Invalid pulse\r\n", strlen("Invalid pulse\r\n"), 100);
 	}
 
 	return pulse_width;
@@ -288,8 +287,6 @@ int main(void)
   	dev_ctx_2.mdelay = platform_delay;
   	dev_ctx_2.handle = &hi2c2;
 
-  	/* Initialize platform specific hardware */
-
   	// Set CS to High
   	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);
 
@@ -298,19 +295,20 @@ int main(void)
 
   	/* Check device ID */
   	sths34pf80_device_id_get(&dev_ctx, &whoami);
-  	sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
 
   	while(whoami != STHS34PF80_ID){
   		HAL_UART_Transmit(&huart2, err_buf, 12, 1000);
-  		HAL_Delay(1000);
+  			HAL_Delay(1000);
   		sths34pf80_device_id_get(&dev_ctx, &whoami);
   	}
+  	sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
   	while(whoami_2 != STHS34PF80_ID){
   		HAL_UART_Transmit(&huart2, err_buf, 12, 1000);
   		HAL_Delay(1000);
   		sths34pf80_device_id_get(&dev_ctx_2, &whoami_2);
   	}
-  	snprintf((char *)tx_buffer, sizeof(tx_buffer), "Device Found! WHO_AM_I: 0x%02X\r\n", whoami);
+  	snprintf((char *)tx_buffer, sizeof(tx_buffer), "Both Device's Found! WHO_AM_I_1: 0x%02X, WHO_AM_I_2: 0x%02X\r\n",
+  			whoami, whoami_2);
   	tx_com(tx_buffer, strlen((char const *)tx_buffer));
 
   	sths34pf80_avg_tobject_num_set(&dev_ctx, STHS34PF80_AVG_TMOS_32);
@@ -392,14 +390,14 @@ int main(void)
 	uint8_t motion_2 = 0;
 	uint8_t presence_2 = 0;
 
-	float sensor_min = -50.0;  // Example: a reading below this is no one
-	float sensor_max = 20000.0; // Example: a reading above this is a large crowd
+	float sensor_min = 1.0;  // Example: a reading below this is no one
+	float sensor_max = 18000.0; // Example: a reading above this is a large crowd
 
-	float sensor_min_2 = -50.0;  // Example: a reading below this is no one
-	float sensor_max_2 = 20000.0; // Example: a reading above this is a large crowd
+	float sensor_min_2 = 1.0;  // Example: a reading below this is no one
+	float sensor_max_2 = 18000.0; // Example: a reading above this is a large crowd
 
-	float sensor_min_3 = 0.0;
-	float sensor_max_3 = 270.0;
+	float sensor_min_3 = 4.0; // 0.4 meters
+	float sensor_max_3 = 134.0; // 1.34 meters
 
 	float pwm_min = 0.0;       // 0% duty cycle
 	float pwm_max = 999.0;     // Max duty cycle (matches the Counter Period)
@@ -416,8 +414,6 @@ while (1)
 	  if (wakeup_thread)
 	  {
 		wakeup_thread = 0;
-		//motion = 0;
-		//presence = 0;
 
 		  sths34pf80_func_status_get(&dev_ctx, &func_status);
 
@@ -435,7 +431,7 @@ while (1)
 		  ambient_temp_celsius_2 = (float)ambient_temp_raw_2 / 100.0f;
 
 
-		  // RIGHT SIDE SENSOR
+		  // LEFT SIDE SENSOR
 		if (func_status.mot_flag != motion)
 		  {
 			motion = func_status.mot_flag;
@@ -447,7 +443,7 @@ while (1)
 
 			}
 		  }
-		 LEFT SIDE SENSOR
+		// RIGHT SIDE SENSOR
 		if (func_status_2.mot_flag != motion_2)
 			  {
 				motion_2 = func_status_2.mot_flag;
@@ -480,12 +476,19 @@ while (1)
 
 
 			  buzzer_strength_3 = map_arduino(average_dist, sensor_min_3, sensor_max_3, pwm_min, pwm_max);
-			  if (average_dist < sensor_min_3) buzzer_strength_3 = pwm_min;
-			  if (average_dist > sensor_max_3) buzzer_strength_3 = pwm_max;
+			  if (average_dist < sensor_min_3) buzzer_strength_3 = pwm_max;
+			  if (average_dist > sensor_max_3) buzzer_strength_3 = pwm_min;
 
 			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, buzzer_strength);
 			  __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, buzzer_strength_2);
-			  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, buzzer_strength_3);
+
+			  if (pulse_width > 25000 || pulse_width < 100) {
+				  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
+			  	}
+			  else{
+				  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, buzzer_strength_3);
+			  }
+
 
 			  platform_delay(BOOT_TIME);
 
@@ -504,10 +507,24 @@ while (1)
 
 				tx_com(tx_buffer, strlen((char const *)tx_buffer));
 
+				if (pulse_width < 100) {
+					snprintf((char *)tx_buffer, sizeof(tx_buffer),
+						  "--> Invalid Center Sensor Distance: %.2f cm, Strength: %d\r\n", average_dist, 999);
+
+					tx_com(tx_buffer, strlen((char const *)tx_buffer));
+					}
+				else if (pulse_width > 25000) {
 				snprintf((char *)tx_buffer, sizeof(tx_buffer),
-					  "--> Center Sensor Distance: %.2f cm, Strength: %d\r\n", average_dist, buzzer_strength_3);
+					  "--> Invalid Center Sensor Distance: %.2f cm, Strength: %d\r\n", average_dist, 0);
 
 				tx_com(tx_buffer, strlen((char const *)tx_buffer));
+				}
+				  else{
+					snprintf((char *)tx_buffer, sizeof(tx_buffer),
+						  "--> Center Sensor Distance: %.2f cm, Strength: %d\r\n", average_dist, buzzer_strength_3);
+
+					tx_com(tx_buffer, strlen((char const *)tx_buffer));
+				  }
 
 				snprintf((char *)tx_buffer, sizeof(tx_buffer), "----------------------------\r\n");
 			    tx_com(tx_buffer, strlen((char const *)tx_buffer));
@@ -528,30 +545,25 @@ while (1)
 
 				pulse_width = arduino_pulse(pulse_width);
 
-			    if (counter < 50){
+			    if (counter <= 49){
 					  if (object_temp_raw < sensor_min) sensor_min = object_temp_raw;
 					  if (object_temp_raw > sensor_max) sensor_max = object_temp_raw;
 
 					  if (object_temp_raw_2 < sensor_min_2) sensor_min_2 = object_temp_raw_2;
 					  if (object_temp_raw_2 > sensor_max_2) sensor_max_2 = object_temp_raw_2;
 
-					  if (average_dist < sensor_min_3) sensor_min_3 = average_dist;
-					  if (average_dist > sensor_max_3) sensor_max_3 = average_dist;
-
 					  counter = counter + 1;
 				  }
 				  else {
-					  if (object_temp_raw < sensor_min) sensor_min = -100.0;
-					  if (object_temp_raw > sensor_max) sensor_max = 9999.0;
+					  if (object_temp_raw < sensor_min) sensor_min = 1.0;
+					  if (object_temp_raw > sensor_max) sensor_max = 18000.0;
 
-					  if (object_temp_raw_2 < sensor_min_2) sensor_min_2 = -100.0;
-					  if (object_temp_raw_2 > sensor_max_2) sensor_max_2 = 9999.0;
+					  if (object_temp_raw_2 < sensor_min_2) sensor_min_2 = 1.0;
+					  if (object_temp_raw_2 > sensor_max_2) sensor_max_2 = 18000.0;
 
-					  if (average_dist < sensor_min_3) sensor_min_3 = 0.0;
-					  if (average_dist > sensor_max_3) sensor_max_3 = 270.0;
 					  counter = 0;
 				  }
-			    HAL_Delay(250);
+			    HAL_Delay(100);
 			}
 			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
 			  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
@@ -706,7 +718,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 63;
+  htim3.Init.Prescaler = 83;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 999;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -765,7 +777,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 63;
+  htim4.Init.Prescaler = 83;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -825,7 +837,7 @@ static void MX_TIM8_Init(void)
 
   /* USER CODE END TIM8_Init 1 */
   htim8.Instance = TIM8;
-  htim8.Init.Prescaler = 63;
+  htim8.Init.Prescaler = 83;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim8.Init.Period = 999;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
