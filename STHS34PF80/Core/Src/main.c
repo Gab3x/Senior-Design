@@ -38,11 +38,6 @@
 #define STHS34PF80_I2C2_ADDRESS_7BIT   0x5A
 #define VLX_ADDR_R 0x52
 
-// VLX --------
-#define MODEL_ID 0x010F // Value should be 0xEA
-#define MODULE_TYPE 0x0110 // Value should be 0xAA
-// VLX --------
-
 // ARDUINO
 #define TRIG_PIN GPIO_PIN_9
 #define TRIG_PORT GPIOA
@@ -398,6 +393,7 @@ int main(void)
 
 	float sensor_min_3 = 4.0; // 0.4 meters
 	float sensor_max_3 = 134.0; // 1.34 meters
+	/* Above ~1.34m and Below ~0.4m, readings become unreliable and are subject to malfunction */
 
 	float pwm_min = 0.0;       // 0% duty cycle
 	float pwm_max = 999.0;     // Max duty cycle (matches the Counter Period)
@@ -574,7 +570,7 @@ while (1)
 			  snprintf((char *)tx_buffer, sizeof(tx_buffer), "\n**End of Presence**\r\n");
 			  tx_com(tx_buffer, strlen((char const *)tx_buffer));
 		  }
-		} //while (func_status.pres_flag);
+		}
 	}
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
@@ -1082,3 +1078,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
